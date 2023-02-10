@@ -105,3 +105,72 @@ export function transformObjectToRoute<T = RouteItem>(routeList: RouteItem[]): T
 
   return [PAGE_NOT_FOUND_ROUTE, ...routeList] as unknown as T[];
 }
+
+// 将背景对象变成路由对象
+export function transformObjectToRoutes<T = RouteItem>(routeList: RouteItem[]): T[] {
+  routeList.forEach(async (route) => {
+    if (route.type === 'Layout') {
+      route.component = LayoutMap.get('LAYOUT');
+    } else {
+      route.children = [cloneDeep(route)];
+      route.component = LAYOUT;
+      // route.name = `${route.name}Parent`;
+      route.path = '';
+      route.meta = { title: route.title };
+    }
+    // eslint-disable-next-line no-unused-expressions
+    route.children && asyncImportRoutes(route.children);
+    if (route.meta.icon) route.meta.icon = await getMenuIcon(route.meta.icon);
+  });
+
+  return [...routeList] as unknown as T[];
+  // return [PAGE_NOT_FOUND_ROUTE, ...routeList] as unknown as T[];
+}
+export function asyncImportRoutes(routes: RouteItem[] | undefined) {
+  dynamicViewsModules = dynamicViewsModules || import.meta.glob('../../pages/**/*.vue');
+  if (!routes) return;
+  console.log('routes', JSON.stringify(routes));
+
+  routes.forEach(async (item) => {
+    // @ts-ignore
+    const { title, type } = item;
+    const { children } = item;
+
+    const layoutFound = LayoutMap.get('LAYOUT');
+    if (type && type === 'Layout') {
+      item.component = layoutFound;
+      item.meta = { title };
+    } else {
+      item.meta = {
+        title,
+      };
+      item.component = dynamicImports(dynamicViewsModules, item.component);
+    }
+    // eslint-disable-next-line no-unused-expressions
+    children && asyncImportRoutes(children);
+  });
+}
+
+function dynamicImports(dynamicViewsModules: Record<string, () => Promise<Recordable>>, component: string) {
+  const keys = Object.keys(dynamicViewsModules);
+  const matchKeys = keys.filter((key) => {
+    const k = key.replace('../../pages', '');
+    const startFlag = component.startsWith('/');
+    const endFlag = component.endsWith('.vue') || component.endsWith('.tsx');
+    const startIndex = startFlag ? 0 : 1;
+    const lastIndex = endFlag ? k.length : k.lastIndexOf('.');
+    return k.substring(startIndex, lastIndex) === component;
+  });
+  if (matchKeys?.length === 1) {
+    const matchKey = matchKeys[0];
+    return dynamicViewsModules[matchKey];
+  }
+  if (matchKeys?.length > 1) {
+    throw new Error(
+      'Please do not create `.vue` and `.TSX` files with the same file name in the same hierarchical directory under the views folder. This will cause dynamic introduction failure',
+    );
+  } else {
+    console.warn(`Can't find ${component} in pages folder`);
+  }
+  return EXCEPTION_COMPONENT;
+}

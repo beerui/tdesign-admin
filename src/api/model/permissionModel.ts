@@ -10,6 +10,7 @@ export type Component<T = any> =
   | (() => Promise<T>);
 
 export interface RouteItem {
+  type?: any;
   path: string;
   name: string;
   component?: Component | string;
